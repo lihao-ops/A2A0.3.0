@@ -58,6 +58,9 @@ public class JsonRpcController {
                 return ResponseEntity.ok((JsonRpcResponse<?>) r);
             } else if ("task_cancel".equals(request.method)) {
                 return handleTaskCancel(request, base);
+            } else if ("message/stream".equals(request.method)) {
+                base.error = new JsonRpcError(-32601, "Method message/stream must be invoked via /agent/message");
+                return ResponseEntity.ok(base);
             } else {
                 base.error = new JsonRpcError(-32601, "Method not found: " + request.method);
                 return ResponseEntity.ok(base);
@@ -295,61 +298,5 @@ public class JsonRpcController {
             return p;
         }
         return null;
-    }
-
-    private MessageStreamParams mapMessageStreamParams(Object params) {
-        if (params == null) return null;
-        if (params instanceof MessageStreamParams p) return p;
-        if (params instanceof Map<?,?> map) {
-            MessageStreamParams p = new MessageStreamParams();
-            p.id = asString(map.get("id"));
-            p.sessionId = asString(map.get("sessionId"));
-            p.agentLoginSessionId = asString(map.get("agentLoginSessionId"));
-
-            Object messageObj = map.get("message");
-            if (messageObj instanceof Map<?,?> messageMap) {
-                MessageDto dto = new MessageDto();
-                dto.role = asString(messageMap.get("role"));
-                Object partsObj = messageMap.get("parts");
-                if (partsObj instanceof List<?> partsList) {
-                    List<MessagePartDto> mappedParts = new ArrayList<>();
-                    for (Object partObj : partsList) {
-                        MessagePartDto partDto = mapMessagePart(partObj);
-                        mappedParts.add(partDto);
-                    }
-                    dto.parts = mappedParts;
-                }
-                p.message = dto;
-            }
-            return p;
-        }
-        return null;
-    }
-
-    private MessagePartDto mapMessagePart(Object partObj) {
-        MessagePartDto part = new MessagePartDto();
-        if (!(partObj instanceof Map<?,?> partMap)) {
-            return part;
-        }
-        part.kind = asString(partMap.get("kind"));
-        Object text = partMap.get("text");
-        part.text = text == null ? null : String.valueOf(text);
-        Object fileObj = partMap.get("file");
-        if (fileObj instanceof Map<?,?> fileMap) {
-            FilePart file = new FilePart();
-            file.name = asString(fileMap.get("name"));
-            file.mimeType = asString(fileMap.get("mimeType"));
-            file.bytes = asString(fileMap.get("bytes"));
-            file.uri = asString(fileMap.get("uri"));
-            part.file = file;
-        }
-        if (partMap.containsKey("data")) {
-            part.data = partMap.get("data");
-        }
-        return part;
-    }
-
-    private String asString(Object value) {
-        return value == null ? null : String.valueOf(value);
     }
 }

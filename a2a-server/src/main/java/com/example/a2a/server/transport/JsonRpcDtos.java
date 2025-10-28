@@ -99,24 +99,4 @@ public class JsonRpcDtos {
     public static class TaskResult {
         public ResponseMessage message; // 仅在COMPLETED时返回
     }
-
-    // ---- message/stream 相关 DTO ----
-    public static class MessageStreamParams {
-        public String id;
-        public String sessionId;
-        public String agentLoginSessionId;
-        public MessageDto message;
-    }
-
-    public static class MessageDto {
-        public String role;
-        public List<MessagePartDto> parts;
-    }
-
-    public static class MessagePartDto {
-        public String kind;
-        public String text;
-        public FilePart file;
-        public Object data;
-    }
 }
