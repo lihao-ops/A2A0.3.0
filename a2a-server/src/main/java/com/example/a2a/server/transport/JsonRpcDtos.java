@@ -39,11 +39,23 @@ public class JsonRpcDtos {
     }
 
     public static class PartDto {
-        public String type = "text";
+        public String kind = "text";
         public String text;
+        public FilePart file;
+        public Object data;
 
         public PartDto() {}
-        public PartDto(String text) { this.text = text; }
+        public PartDto(String text) {
+            this.kind = "text";
+            this.text = text;
+        }
+    }
+
+    public static class FilePart {
+        public String name;
+        public String mimeType;
+        public String bytes;
+        public String uri;
     }
 
     // ---- 扩展：AgentCard 与 Task 交互相关 DTO ----
