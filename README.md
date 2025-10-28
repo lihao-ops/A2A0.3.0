@@ -30,31 +30,14 @@
    - 根目录执行：`mvn clean install`
 
 4. 运行服务端：
-   - 进入 `a2a-server`：`mvn spring-boot:run`
-   - 服务默认端口：`10001`
-   - 健康检查：`http://localhost:10001/actuator/health`
-   - JSON-RPC 端点：`POST http://localhost:10001/jsonrpc`
-     - 请求示例：
-       ```json
-       {
-         "jsonrpc": "2.0",
-         "method": "weather_search",
-         "params": {"text": "LA, CA"},
-         "id": "1"
-       }
-       ```
-     - 响应示例（简化A2A消息风格）：
-       ```json
-       {
-         "jsonrpc": "2.0",
-         "id": "1",
-         "result": {
-           "parts": [
-             {"type": "text", "text": "Weather in LA, CA: Sunny 25°C"}
-           ]
-         }
-       }
-       ```
+  - 进入 `a2a-server`：`mvn spring-boot:run`
+  - 服务默认端口：`10001`
+  - 健康检查：`http://localhost:10001/actuator/health`
+  - HarmonyOS Agent JSON-RPC 端点：`POST http://localhost:10001/agent/message`
+    - 服务端会根据请求方法返回标准 JSON-RPC 响应或通过 `Content-Type: text/event-stream` 推送 SSE 消息
+    - `initialize` / `notifications/initialized`：建立会话并返回 `agentSessionId`
+    - `message/stream`：在对话期间返回 `TaskStatusUpdateEvent`、`TaskArtifactUpdateEvent` 事件流
+    - `tasks/cancel`、`clearContext`、`authorize`、`deauthorize`：同步 JSON-RPC 响应
 
 5. 运行客户端：
    - 进入 `a2a-client`：`mvn spring-boot:run`
@@ -67,6 +50,8 @@
   - `com.example.a2a.server.agent.WeatherAgentConfig`：
     - `@Bean @PublicAgentCard` 暴露 `AgentCard`
     - `@Bean` 暴露 `AgentExecutor`，示例实现从任务输入中提取文本并返回消息
+  - `com.example.a2a.server.transport.agent.AgentMessageController`：HarmonyOS Agent 规范 `/agent/message` 控制器
+  - `com.example.a2a.server.transport.agent.dto.AgentJsonRpcDtos`：HarmonyOS Agent 规范 JSON-RPC 请求/响应 DTO
   - `com.example.a2a.server.transport.JsonRpcController`：JSON-RPC 控制器
   - `com.example.a2a.server.transport.JsonRpcDtos`：JSON-RPC 请求/响应 DTO
 
@@ -87,6 +72,12 @@
 - 在 Spring 环境中适配 A2A：
   - 适配点：路由与控制器（将 A2A 任务处理流程暴露为 REST/JSON-RPC/gRPC 端点）
   - 使用 `AgentExecutor` 与 `TaskUpdater` 管理任务状态与事件队列（当前 JSON-RPC 示例直接调用示例 Agent）
+
+- HarmonyOS Agent RPC 兼容性说明：
+  - `initialize`、`notifications/initialized`：通过 `AgentMessageController` 与 `AgentSessionService` 建立并维护七天有效期会话
+  - `message/stream`：`StreamingTaskService` 使用 `SseEmitter` 推送 `TaskStatusUpdateEvent`、`TaskArtifactUpdateEvent`，符合 SSE 格式
+  - `tasks/cancel`、`clearContext`：结合 `StreamingTaskService` 与 `ConversationContextService` 管理任务与上下文
+  - `authorize`、`deauthorize`：`AuthorizationService` 支持生成/撤销 `agentLoginSessionId`
 
 ## 注意事项
 
