@@ -61,6 +61,26 @@ class AgentMessageControllerTest {
         JsonNode json = objectMapper.readTree(response.getBody());
         agentSessionId = json.path("result").path("agentSessionId").asText();
         assertThat(agentSessionId).isNotBlank();
+        assertThat(json.path("error").path("code").asInt()).isEqualTo(0);
+    }
+
+    @Test
+    void initializeReturnsSessionMetadata() throws Exception {
+        String payload = "{" +
+                "\"jsonrpc\":\"2.0\"," +
+                "\"id\":\"init-verify\"," +
+                "\"method\":\"initialize\"" +
+                "}";
+
+        ResponseEntity<String> response = postJson(payload, null);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+
+        JsonNode json = objectMapper.readTree(response.getBody());
+        assertThat(json.path("result").path("version").asText()).isEqualTo("1.0");
+        assertThat(json.path("result").path("agentSessionId").asText()).isNotBlank();
+        assertThat(json.path("result").path("agentSessionTtl").asLong())
+                .isEqualTo(agentSessionService.getDefaultTtlSeconds());
+        assertThat(json.path("error").path("code").asInt()).isEqualTo(0);
     }
 
     @Test
@@ -76,6 +96,7 @@ class AgentMessageControllerTest {
 
         JsonNode json = objectMapper.readTree(response.getBody());
         assertThat(json.path("result").path("status").asText()).isEqualTo("ok");
+        assertThat(json.path("error").path("code").asInt()).isEqualTo(0);
         assertThat(agentSessionService.isInitialized(agentSessionId)).isTrue();
     }
 
@@ -97,10 +118,19 @@ class AgentMessageControllerTest {
         ResponseEntity<String> response = postStream(payload, agentSessionId);
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
 
-        String body = response.getBody();
-        assertThat(body).contains("artifact-update");
-        assertThat(body).contains("\"final\":true");
-        assertThat(body).contains("Weather in London");
+        java.util.List<JsonNode> events = parseSseEvents(response.getBody());
+        assertThat(events).isNotEmpty();
+
+        JsonNode first = events.get(0);
+        assertThat(first.path("result").path("kind").asText()).isEqualTo("status-update");
+        assertThat(first.path("result").path("final").asBoolean()).isFalse();
+        assertThat(first.path("error").path("code").asInt()).isEqualTo(0);
+
+        JsonNode last = events.get(events.size() - 1);
+        assertThat(last.path("result").path("kind").asText()).isEqualTo("artifact-update");
+        assertThat(last.path("result").path("final").asBoolean()).isTrue();
+        assertThat(last.path("result").path("artifact").path("parts").toString()).contains("Weather in London");
+        assertThat(last.path("error").path("code").asInt()).isEqualTo(0);
 
         ConversationContext context = conversationContextService.getContext(agentSessionId, "conversation-1");
         assertThat(context).isNotNull();
@@ -139,12 +169,17 @@ class AgentMessageControllerTest {
 
         JsonNode cancelJson = objectMapper.readTree(cancelResponse.getBody());
         assertThat(cancelJson.path("result").path("status").path("state").asText()).isEqualTo("canceled");
+        assertThat(cancelJson.path("error").path("code").asInt()).isEqualTo(0);
 
         ResponseEntity<String> streamResponse = streamFuture.get(5, TimeUnit.SECONDS);
         assertThat(streamResponse.getStatusCode().is2xxSuccessful()).isTrue();
 
-        String body = streamResponse.getBody();
-        assertThat(body).contains("\"state\":\"canceled\"");
+        java.util.List<JsonNode> events = parseSseEvents(streamResponse.getBody());
+        assertThat(events).isNotEmpty();
+        JsonNode finalEvent = events.get(events.size() - 1);
+        assertThat(finalEvent.path("result").path("status").path("state").asText()).isEqualTo("canceled");
+        assertThat(finalEvent.path("result").path("final").asBoolean()).isTrue();
+        assertThat(finalEvent.path("error").path("code").asInt()).isEqualTo(0);
         assertThat(streamingTaskService.hasActiveTask(taskId)).isFalse();
     }
 
@@ -181,6 +216,7 @@ class AgentMessageControllerTest {
 
         JsonNode json = objectMapper.readTree(response.getBody());
         assertThat(json.path("result").path("status").path("state").asText()).isEqualTo("cleared");
+        assertThat(json.path("error").path("code").asInt()).isEqualTo(0);
         assertThat(conversationContextService.getContext(agentSessionId, "conversation-3")).isNull();
     }
 
@@ -203,6 +239,7 @@ class AgentMessageControllerTest {
         String loginSessionId = authJson.path("result").path("agentLoginSessionId").asText();
         assertThat(loginSessionId).isNotBlank();
         assertThat(authorizationService.isActive(loginSessionId)).isTrue();
+        assertThat(authJson.path("error").path("code").asInt()).isEqualTo(0);
 
         String deauthorizePayload = "{" +
                 "\"jsonrpc\":\"2.0\"," +
@@ -219,6 +256,7 @@ class AgentMessageControllerTest {
 
         JsonNode deauthJson = objectMapper.readTree(deauthResponse.getBody());
         assertThat(deauthJson.path("result").path("version").asText()).isEqualTo("1.0");
+        assertThat(deauthJson.path("error").path("code").asInt()).isEqualTo(0);
         assertThat(authorizationService.isActive(loginSessionId)).isFalse();
     }
 
@@ -241,6 +279,28 @@ class AgentMessageControllerTest {
         }
         HttpEntity<String> entity = new HttpEntity<>(payload, headers);
         return restTemplate.exchange("/agent/message", HttpMethod.POST, entity, String.class);
+    }
+
+    private java.util.List<JsonNode> parseSseEvents(String body) throws Exception {
+        java.util.List<JsonNode> events = new java.util.ArrayList<>();
+        if (body == null) {
+            return events;
+        }
+        String[] chunks = body.split("\n\n");
+        for (String chunk : chunks) {
+            if (chunk == null || chunk.isBlank()) {
+                continue;
+            }
+            for (String line : chunk.split("\n")) {
+                if (line.startsWith("data:")) {
+                    String json = line.substring("data:".length()).trim();
+                    if (!json.isEmpty()) {
+                        events.add(objectMapper.readTree(json));
+                    }
+                }
+            }
+        }
+        return events;
     }
 
     private void waitUntil(BooleanSupplier condition, long timeoutMillis) throws InterruptedException {
