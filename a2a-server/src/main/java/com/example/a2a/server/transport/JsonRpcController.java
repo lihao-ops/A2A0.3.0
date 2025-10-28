@@ -21,7 +21,10 @@ public class JsonRpcController {
     }
 
     @PostMapping({"/jsonrpc", "/agent/message"})
-    public ResponseEntity<JsonRpcResponse<?>> handle(@RequestBody JsonRpcRequest request) {
+    public ResponseEntity<JsonRpcResponse<?>> handle(
+            @RequestBody JsonRpcRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "agent-session-id", required = false)
+            String agentSessionId) {
         JsonRpcResponse<?> base = new JsonRpcResponse<>();
         base.id = request.id;
 
@@ -49,7 +52,7 @@ public class JsonRpcController {
             } else if ("task_cancel".equals(request.method)) {
                 return handleTaskCancel(request, base);
             } else if ("message/stream".equals(request.method)) {
-                JsonRpcResponse<ResponseMessage> r = handleMessageStream(request, base);
+                JsonRpcResponse<ResponseMessage> r = handleMessageStream(request, base, agentSessionId);
                 return ResponseEntity.ok((JsonRpcResponse<?>) r);
             } else {
                 base.error = new JsonRpcError(-32601, "Method not found: " + request.method);
@@ -158,7 +161,10 @@ public class JsonRpcController {
         return resp;
     }
 
-    private JsonRpcResponse<ResponseMessage> handleMessageStream(JsonRpcRequest request, JsonRpcResponse<?> base) {
+    private JsonRpcResponse<ResponseMessage> handleMessageStream(
+            JsonRpcRequest request,
+            JsonRpcResponse<?> base,
+            String agentSessionId) {
         JsonRpcResponse<ResponseMessage> resp = new JsonRpcResponse<>();
         resp.id = base.id;
 
@@ -176,7 +182,7 @@ public class JsonRpcController {
                 .orElse(null);
 
         String weatherResult = weatherAgent.search(textQuery);
-        String summary = buildMessageStreamSummary(params);
+        String summary = buildMessageStreamSummary(params, agentSessionId);
 
         ResponseMessage message = new ResponseMessage();
         message.parts = java.util.List.of(new PartDto(summary), new PartDto(weatherResult));
@@ -184,14 +190,16 @@ public class JsonRpcController {
         return resp;
     }
 
-    private String buildMessageStreamSummary(MessageStreamParams params) {
+    private String buildMessageStreamSummary(MessageStreamParams params, String agentSessionId) {
         StringBuilder sb = new StringBuilder();
         sb.append("messageStream requestId=")
                 .append(stringOrPlaceholder(params.id))
                 .append(" sessionId=")
                 .append(stringOrPlaceholder(params.sessionId))
                 .append(" agentLoginSessionId=")
-                .append(stringOrPlaceholder(params.agentLoginSessionId));
+                .append(stringOrPlaceholder(params.agentLoginSessionId))
+                .append(" agentSessionId=")
+                .append(stringOrPlaceholder(agentSessionId));
 
         if (params.message != null) {
             sb.append(" role=").append(stringOrPlaceholder(params.message.role));
@@ -205,7 +213,17 @@ public class JsonRpcController {
                     } else if ("file".equals(kind)) {
                         String name = part.file != null ? stringOrPlaceholder(part.file.name) : "unknown";
                         String mime = part.file != null ? stringOrPlaceholder(part.file.mimeType) : "unknown";
-                        partDescriptions.add("file:\"" + name + "\" (" + mime + ")");
+                        String location = "";
+                        if (part.file != null) {
+                            String uri = stringOrPlaceholder(part.file.uri);
+                            String bytes = stringOrPlaceholder(part.file.bytes);
+                            if (!"<none>".equals(uri)) {
+                                location = " uri=" + uri;
+                            } else if (!"<none>".equals(bytes)) {
+                                location = " bytes(length=" + bytes.length() + ")";
+                            }
+                        }
+                        partDescriptions.add("file:\"" + name + "\" (" + mime + ")" + location);
                     } else if ("data".equals(kind)) {
                         partDescriptions.add("data:" + (part.data == null ? "{}" : part.data.toString()));
                     } else {
