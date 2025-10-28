@@ -12,6 +12,10 @@ import java.util.List;
 
 import static com.example.a2a.server.transport.JsonRpcDtos.*;
 
+/**
+ * 提供传统 JSON-RPC 端点以便和 Postman/脚本快速验证示例 Agent 能力。HarmonyOS 场景使用
+ * {@code AgentMessageController}，若上线时不需要 JSON-RPC，可直接删除本控制器及相关 DTO。
+ */
 @RestController
 public class JsonRpcController {
 
@@ -23,6 +27,10 @@ public class JsonRpcController {
         this.taskService = taskService;
     }
 
+    /**
+     * 支持 `agent_card`、`weather_search` 以及 `task_*` 系列方法，便于非 HarmonyOS 客户端
+     * 复用同一套能力。返回值遵循 JSON-RPC 2.0 规范。
+     */
     @PostMapping("/jsonrpc")
     public ResponseEntity<JsonRpcResponse<?>> handle(@RequestBody JsonRpcRequest request,
                                                      @RequestHeader(value = "agent-session-id", required = false)
