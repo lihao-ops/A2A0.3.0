@@ -24,7 +24,6 @@ import com.example.a2a.server.transport.agent.dto.AgentJsonRpcDtos.TaskStatusEnv
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -62,9 +61,9 @@ public class AgentMessageController {
         this.streamingTaskService = streamingTaskService;
     }
 
-    @PostMapping(value = "/message", produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_EVENT_STREAM_VALUE})
-    public ResponseEntity<?> handle(@RequestBody AgentRpcRequest request,
-                                    @RequestHeader(value = "agent-session-id", required = false) String agentSessionId) {
+    @PostMapping("/message")
+    public Object handle(@RequestBody AgentRpcRequest request,
+                         @RequestHeader(value = "agent-session-id", required = false) String agentSessionId) {
         if (request.jsonrpc == null || !"2.0".equals(request.jsonrpc)) {
             return ResponseEntity.badRequest()
                     .body(AgentRpcResponse.error(request.id, -32600, "Invalid Request: jsonrpc must be '2.0'"));
@@ -72,22 +71,22 @@ public class AgentMessageController {
 
         try {
             return switch (request.method) {
-                case "initialize" -> ResponseEntity.ok(handleInitialize(request));
-                case "notifications/initialized" -> ResponseEntity.ok(handleInitialized(request, agentSessionId));
+                case "initialize" -> handleInitialize(request);
+                case "notifications/initialized" -> handleInitialized(request, agentSessionId);
                 case "message/stream" -> handleMessageStream(request, agentSessionId);
-                case "tasks/cancel" -> ResponseEntity.ok(handleTaskCancel(request, agentSessionId));
-                case "clearContext" -> ResponseEntity.ok(handleClearContext(request, agentSessionId));
-                case "authorize" -> ResponseEntity.ok(handleAuthorize(request, agentSessionId));
-                case "deauthorize" -> ResponseEntity.ok(handleDeauthorize(request, agentSessionId));
-                default -> ResponseEntity.ok(AgentRpcResponse.error(request.id, -32601,
-                        "Method not found: " + request.method));
+                case "tasks/cancel" -> handleTaskCancel(request, agentSessionId);
+                case "clearContext" -> handleClearContext(request, agentSessionId);
+                case "authorize" -> handleAuthorize(request, agentSessionId);
+                case "deauthorize" -> handleDeauthorize(request, agentSessionId);
+                default -> AgentRpcResponse.error(request.id, -32601,
+                        "Method not found: " + request.method);
             };
         } catch (AgentSessionException ex) {
-            return ResponseEntity.ok(AgentRpcResponse.error(request.id, -32001, ex.getMessage()));
+            return AgentRpcResponse.error(request.id, -32001, ex.getMessage());
         } catch (IllegalArgumentException ex) {
-            return ResponseEntity.ok(AgentRpcResponse.error(request.id, -32602, ex.getMessage()));
+            return AgentRpcResponse.error(request.id, -32602, ex.getMessage());
         } catch (Exception ex) {
-            return ResponseEntity.ok(AgentRpcResponse.error(request.id, -32603, ex.getMessage()));
+            return AgentRpcResponse.error(request.id, -32603, ex.getMessage());
         }
     }
 
@@ -104,7 +103,7 @@ public class AgentMessageController {
         return AgentRpcResponse.success(request.id, new AckResult());
     }
 
-    private ResponseEntity<SseEmitter> handleMessageStream(AgentRpcRequest request, String agentSessionId)
+    private SseEmitter handleMessageStream(AgentRpcRequest request, String agentSessionId)
             throws JsonProcessingException {
         agentSessionService.requireSession(agentSessionId);
 
@@ -118,10 +117,7 @@ public class AgentMessageController {
 
         conversationContextService.append(agentSessionId, params.sessionId, textQuery);
 
-        SseEmitter emitter = streamingTaskService.startStream(request.id, params, summary, textQuery);
-        return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_EVENT_STREAM)
-                .body(emitter);
+        return streamingTaskService.startStream(request.id, params, summary, textQuery);
     }
 
     private AgentRpcResponse<CancelResult> handleTaskCancel(AgentRpcRequest request, String agentSessionId)
