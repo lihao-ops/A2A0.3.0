@@ -46,6 +46,7 @@ public final class AgentJsonRpcDtos {
             AgentRpcResponse<T> response = new AgentRpcResponse<>();
             response.id = id;
             response.result = payload;
+            response.error = new AgentRpcError(0, "success");
             return response;
         }
 
