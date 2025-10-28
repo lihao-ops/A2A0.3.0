@@ -22,6 +22,12 @@ public class JsonRpcController {
     private final WeatherAgent weatherAgent;
     private final TaskService taskService;
 
+    /**
+     * 注入天气 Agent 与任务服务。
+     *
+     * @param weatherAgent 天气查询实现
+     * @param taskService  任务编排服务
+     */
     public JsonRpcController(WeatherAgent weatherAgent, TaskService taskService) {
         this.weatherAgent = weatherAgent;
         this.taskService = taskService;
@@ -71,6 +77,9 @@ public class JsonRpcController {
         }
     }
 
+    /**
+     * 处理天气查询请求并返回文本部件。
+     */
     private JsonRpcResponse<ResponseMessage> handleWeatherSearch(JsonRpcRequest request, JsonRpcResponse<?> base) {
         JsonRpcResponse<ResponseMessage> resp = new JsonRpcResponse<>();
         resp.id = base.id;
@@ -85,6 +94,9 @@ public class JsonRpcController {
         return resp;
     }
 
+    /**
+     * 返回示例 AgentCard。
+     */
     private JsonRpcResponse<AgentCardDto> handleAgentCard(JsonRpcResponse<?> base) {
         JsonRpcResponse<AgentCardDto> resp = new JsonRpcResponse<>();
         resp.id = base.id;
@@ -107,6 +119,9 @@ public class JsonRpcController {
         return resp;
     }
 
+    /**
+     * 处理任务提交请求并异步执行。
+     */
     private JsonRpcResponse<TaskSubmitResult> handleTaskSubmit(JsonRpcRequest request, JsonRpcResponse<?> base) {
         JsonRpcResponse<TaskSubmitResult> resp = new JsonRpcResponse<>();
         resp.id = base.id;
@@ -123,6 +138,9 @@ public class JsonRpcController {
         return resp;
     }
 
+    /**
+     * 查询任务状态并返回当前状态。
+     */
     private JsonRpcResponse<TaskStatusResult> handleTaskStatus(JsonRpcRequest request, JsonRpcResponse<?> base) {
         JsonRpcResponse<TaskStatusResult> resp = new JsonRpcResponse<>();
         resp.id = base.id;
@@ -143,6 +161,9 @@ public class JsonRpcController {
         return resp;
     }
 
+    /**
+     * 获取已完成任务的最终结果。
+     */
     private JsonRpcResponse<TaskResult> handleTaskResult(JsonRpcRequest request, JsonRpcResponse<?> base) {
         JsonRpcResponse<TaskResult> resp = new JsonRpcResponse<>();
         resp.id = base.id;
@@ -168,6 +189,9 @@ public class JsonRpcController {
         return resp;
     }
 
+    /**
+     * 处理任务取消请求。
+     */
     private ResponseEntity<JsonRpcResponse<?>> handleTaskCancel(JsonRpcRequest request, JsonRpcResponse<?> base) {
         JsonRpcResponse<TaskStatusResult> resp = new JsonRpcResponse<>();
         resp.id = base.id;
@@ -193,6 +217,9 @@ public class JsonRpcController {
         return ResponseEntity.ok(resp);
     }
 
+    /**
+     * 解析天气查询参数。
+     */
     private WeatherParams mapWeatherParams(Object params) {
         if (params == null) return null;
         if (params instanceof WeatherParams wp) {
@@ -207,6 +234,9 @@ public class JsonRpcController {
         return null;
     }
 
+    /**
+     * 解析任务提交参数。
+     */
     private TaskSubmitParams mapTaskSubmitParams(Object params) {
         if (params == null) return null;
         if (params instanceof TaskSubmitParams p) return p;
@@ -219,6 +249,9 @@ public class JsonRpcController {
         return null;
     }
 
+    /**
+     * 解析只包含任务 ID 的参数结构。
+     */
     private TaskIdParams mapTaskIdParams(Object params) {
         if (params == null) return null;
         if (params instanceof TaskIdParams p) return p;
