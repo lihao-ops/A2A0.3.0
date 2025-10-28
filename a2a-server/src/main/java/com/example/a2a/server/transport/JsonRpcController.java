@@ -48,6 +48,9 @@ public class JsonRpcController {
                 return ResponseEntity.ok((JsonRpcResponse<?>) r);
             } else if ("task_cancel".equals(request.method)) {
                 return handleTaskCancel(request, base);
+            } else if ("message/stream".equals(request.method)) {
+                base.error = new JsonRpcError(-32601, "Method message/stream must be invoked via /agent/message");
+                return ResponseEntity.ok(base);
             } else {
                 base.error = new JsonRpcError(-32601, "Method not found: " + request.method);
                 return ResponseEntity.ok(base);
