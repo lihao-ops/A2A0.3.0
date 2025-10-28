@@ -5,11 +5,11 @@ import com.example.a2a.server.transport.JsonRpcDtos.JsonRpcError;
 import com.example.a2a.server.transport.JsonRpcDtos.JsonRpcResponse;
 import com.example.a2a.server.transport.JsonRpcDtos.PartDto;
 import com.example.a2a.server.transport.JsonRpcDtos.ResponseMessage;
-import com.example.a2a.server.transport.message.dto.MessageStreamDtos.AgentMessage;
-import com.example.a2a.server.transport.message.dto.MessageStreamDtos.FilePart;
-import com.example.a2a.server.transport.message.dto.MessageStreamDtos.MessagePart;
-import com.example.a2a.server.transport.message.dto.MessageStreamDtos.MessageStreamParams;
-import com.example.a2a.server.transport.message.dto.MessageStreamDtos.MessageStreamRequest;
+import com.example.a2a.server.transport.message.dto.MessageStreamDtos.AgentMessageDto;
+import com.example.a2a.server.transport.message.dto.MessageStreamDtos.FilePartDto;
+import com.example.a2a.server.transport.message.dto.MessageStreamDtos.MessagePartDto;
+import com.example.a2a.server.transport.message.dto.MessageStreamDtos.MessageStreamParamsDto;
+import com.example.a2a.server.transport.message.dto.MessageStreamDtos.MessageStreamRequestDto;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,7 +39,7 @@ public class MessageStreamController {
 
     @PostMapping("/message")
     public ResponseEntity<JsonRpcResponse<ResponseMessage>> handleMessageStream(
-            @RequestBody MessageStreamRequest request,
+            @RequestBody MessageStreamRequestDto request,
             @RequestHeader(value = "agent-session-id", required = false) String agentSessionId) {
 
         JsonRpcResponse<ResponseMessage> response = new JsonRpcResponse<>();
@@ -54,7 +54,7 @@ public class MessageStreamController {
             return ResponseEntity.ok(response);
         }
 
-        MessageStreamParams params = request.params;
+        MessageStreamParamsDto params = request.params;
         if (params == null || params.message == null || params.message.parts == null || params.message.parts.isEmpty()) {
             response.error = new JsonRpcError(-32602, "Invalid params: message with parts required");
             return ResponseEntity.ok(response);
@@ -70,7 +70,7 @@ public class MessageStreamController {
         return ResponseEntity.ok(response);
     }
 
-    private String extractTextQuery(AgentMessage message) {
+    private String extractTextQuery(AgentMessageDto message) {
         if (message.parts == null) {
             return null;
         }
@@ -82,7 +82,7 @@ public class MessageStreamController {
                 .orElse(null);
     }
 
-    private String buildSummary(MessageStreamParams params, String agentSessionId) {
+    private String buildSummary(MessageStreamParamsDto params, String agentSessionId) {
         StringBuilder sb = new StringBuilder();
         sb.append("messageStream requestId=")
                 .append(stringOrPlaceholder(params.id))
@@ -97,7 +97,7 @@ public class MessageStreamController {
             sb.append(" role=").append(stringOrPlaceholder(params.message.role));
             List<String> partDescriptions = new ArrayList<>();
             if (params.message.parts != null) {
-                for (MessagePart part : params.message.parts) {
+                for (MessagePartDto part : params.message.parts) {
                     if (part == null) {
                         continue;
                     }
@@ -115,7 +115,7 @@ public class MessageStreamController {
         return sb.toString();
     }
 
-    private String describeFile(FilePart file) {
+    private String describeFile(FilePartDto file) {
         if (file == null) {
             return "file:\"<unknown>\"";
         }

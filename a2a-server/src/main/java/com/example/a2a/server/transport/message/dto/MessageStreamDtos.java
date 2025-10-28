@@ -7,34 +7,34 @@ import java.util.List;
 
 public class MessageStreamDtos {
 
-    public static class MessageStreamRequest {
+    public static class MessageStreamRequestDto {
         public String jsonrpc;
         public String id;
         public String method;
-        public MessageStreamParams params;
+        public MessageStreamParamsDto params;
     }
 
-    public static class MessageStreamParams {
+    public static class MessageStreamParamsDto {
         public String id;
         public String sessionId;
         public String agentLoginSessionId;
-        public AgentMessage message;
+        public AgentMessageDto message;
     }
 
-    public static class AgentMessage {
+    public static class AgentMessageDto {
         public String role;
-        public List<MessagePart> parts;
+        public List<MessagePartDto> parts;
     }
 
-    public static class MessagePart {
+    public static class MessagePartDto {
         public String kind;
         public String text;
-        public FilePart file;
+        public FilePartDto file;
         @JsonInclude(JsonInclude.Include.NON_NULL)
         public JsonNode data;
     }
 
-    public static class FilePart {
+    public static class FilePartDto {
         public String name;
         public String mimeType;
         public String bytes;
