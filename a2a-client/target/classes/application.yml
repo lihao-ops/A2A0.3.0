@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: a2a-client
+server:
+  port: 10001
