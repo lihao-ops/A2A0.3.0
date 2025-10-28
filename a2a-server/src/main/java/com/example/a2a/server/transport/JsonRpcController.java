@@ -5,7 +5,12 @@ import com.example.a2a.server.core.TaskService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 import static com.example.a2a.server.transport.JsonRpcDtos.*;
 
@@ -20,8 +25,10 @@ public class JsonRpcController {
         this.taskService = taskService;
     }
 
-    @PostMapping("/jsonrpc")
-    public ResponseEntity<JsonRpcResponse<?>> handle(@RequestBody JsonRpcRequest request) {
+    @PostMapping({"/jsonrpc", "/agent/message"})
+    public ResponseEntity<JsonRpcResponse<?>> handle(@RequestBody JsonRpcRequest request,
+                                                     @RequestHeader(value = "agent-session-id", required = false)
+                                                     String agentSessionId) {
         JsonRpcResponse<?> base = new JsonRpcResponse<>();
         base.id = request.id;
 
@@ -33,6 +40,9 @@ public class JsonRpcController {
         try {
             if ("weather_search".equals(request.method)) {
                 JsonRpcResponse<ResponseMessage> r = handleWeatherSearch(request, base);
+                return ResponseEntity.ok((JsonRpcResponse<?>) r);
+            } else if ("message/stream".equals(request.method)) {
+                JsonRpcResponse<ResponseMessage> r = handleMessageStream(request, base, agentSessionId);
                 return ResponseEntity.ok((JsonRpcResponse<?>) r);
             } else if ("agent_card".equals(request.method)) {
                 JsonRpcResponse<AgentCardDto> r = handleAgentCard(base);
@@ -68,6 +78,75 @@ public class JsonRpcController {
 
         ResponseMessage message = new ResponseMessage();
         message.parts = java.util.List.of(new PartDto(result));
+        resp.result = message;
+        return resp;
+    }
+
+    private JsonRpcResponse<ResponseMessage> handleMessageStream(JsonRpcRequest request, JsonRpcResponse<?> base,
+                                                                 String agentSessionId) {
+        JsonRpcResponse<ResponseMessage> resp = new JsonRpcResponse<>();
+        resp.id = base.id;
+
+        MessageStreamParams params = mapMessageStreamParams(request.params);
+        if (params == null || params.message == null) {
+            resp.error = new JsonRpcError(-32602, "Invalid params: message required");
+            return resp;
+        }
+
+        String query = null;
+        MessagePartDto filePart = null;
+        Object dataPayload = null;
+        if (params.message.parts != null) {
+            for (MessagePartDto part : params.message.parts) {
+                if (part == null) continue;
+                if (query == null && "text".equals(part.kind)) {
+                    query = part.text;
+                } else if (filePart == null && "file".equals(part.kind) && part.file != null) {
+                    filePart = part;
+                } else if (dataPayload == null && "data".equals(part.kind)) {
+                    dataPayload = part.data;
+                }
+            }
+        }
+
+        if (query == null) {
+            query = "";
+        }
+
+        String weatherResult = weatherAgent.search(query);
+        StringBuilder builder = new StringBuilder();
+        builder.append("message/stream handled for request ")
+                .append(params.id == null ? "<unknown>" : params.id)
+                .append('\n');
+        if (params.sessionId != null) {
+            builder.append("sessionId: ").append(params.sessionId).append('\n');
+        }
+        if (params.agentLoginSessionId != null) {
+            builder.append("agentLoginSessionId: ").append(params.agentLoginSessionId).append('\n');
+        }
+        if (agentSessionId != null) {
+            builder.append("agent-session-id(header): ").append(agentSessionId).append('\n');
+        }
+        builder.append("weather: ").append(weatherResult);
+        if (filePart != null && filePart.file != null) {
+            builder.append('\n').append("file name: ")
+                    .append(filePart.file.name == null ? "<unknown>" : filePart.file.name);
+            if (filePart.file.mimeType != null) {
+                builder.append(" (mimeType: ").append(filePart.file.mimeType).append(')');
+            }
+            if (filePart.file.uri != null) {
+                builder.append(" uri=").append(filePart.file.uri);
+            }
+            if (filePart.file.bytes != null) {
+                builder.append(" bytes(length)=").append(filePart.file.bytes.length());
+            }
+        }
+        if (dataPayload != null) {
+            builder.append('\n').append("data payload: ").append(String.valueOf(dataPayload));
+        }
+
+        ResponseMessage message = new ResponseMessage();
+        message.parts = List.of(new PartDto(builder.toString()));
         resp.result = message;
         return resp;
     }
@@ -216,5 +295,61 @@ public class JsonRpcController {
             return p;
         }
         return null;
+    }
+
+    private MessageStreamParams mapMessageStreamParams(Object params) {
+        if (params == null) return null;
+        if (params instanceof MessageStreamParams p) return p;
+        if (params instanceof Map<?,?> map) {
+            MessageStreamParams p = new MessageStreamParams();
+            p.id = asString(map.get("id"));
+            p.sessionId = asString(map.get("sessionId"));
+            p.agentLoginSessionId = asString(map.get("agentLoginSessionId"));
+
+            Object messageObj = map.get("message");
+            if (messageObj instanceof Map<?,?> messageMap) {
+                MessageDto dto = new MessageDto();
+                dto.role = asString(messageMap.get("role"));
+                Object partsObj = messageMap.get("parts");
+                if (partsObj instanceof List<?> partsList) {
+                    List<MessagePartDto> mappedParts = new ArrayList<>();
+                    for (Object partObj : partsList) {
+                        MessagePartDto partDto = mapMessagePart(partObj);
+                        mappedParts.add(partDto);
+                    }
+                    dto.parts = mappedParts;
+                }
+                p.message = dto;
+            }
+            return p;
+        }
+        return null;
+    }
+
+    private MessagePartDto mapMessagePart(Object partObj) {
+        MessagePartDto part = new MessagePartDto();
+        if (!(partObj instanceof Map<?,?> partMap)) {
+            return part;
+        }
+        part.kind = asString(partMap.get("kind"));
+        Object text = partMap.get("text");
+        part.text = text == null ? null : String.valueOf(text);
+        Object fileObj = partMap.get("file");
+        if (fileObj instanceof Map<?,?> fileMap) {
+            FilePart file = new FilePart();
+            file.name = asString(fileMap.get("name"));
+            file.mimeType = asString(fileMap.get("mimeType"));
+            file.bytes = asString(fileMap.get("bytes"));
+            file.uri = asString(fileMap.get("uri"));
+            part.file = file;
+        }
+        if (partMap.containsKey("data")) {
+            part.data = partMap.get("data");
+        }
+        return part;
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 }
