@@ -20,11 +20,8 @@ public class JsonRpcController {
         this.taskService = taskService;
     }
 
-    @PostMapping({"/jsonrpc", "/agent/message"})
-    public ResponseEntity<JsonRpcResponse<?>> handle(
-            @RequestBody JsonRpcRequest request,
-            @org.springframework.web.bind.annotation.RequestHeader(value = "agent-session-id", required = false)
-            String agentSessionId) {
+    @PostMapping("/jsonrpc")
+    public ResponseEntity<JsonRpcResponse<?>> handle(@RequestBody JsonRpcRequest request) {
         JsonRpcResponse<?> base = new JsonRpcResponse<>();
         base.id = request.id;
 
@@ -52,8 +49,8 @@ public class JsonRpcController {
             } else if ("task_cancel".equals(request.method)) {
                 return handleTaskCancel(request, base);
             } else if ("message/stream".equals(request.method)) {
-                JsonRpcResponse<ResponseMessage> r = handleMessageStream(request, base, agentSessionId);
-                return ResponseEntity.ok((JsonRpcResponse<?>) r);
+                base.error = new JsonRpcError(-32601, "Method message/stream must be invoked via /agent/message");
+                return ResponseEntity.ok(base);
             } else {
                 base.error = new JsonRpcError(-32601, "Method not found: " + request.method);
                 return ResponseEntity.ok(base);
@@ -161,87 +158,6 @@ public class JsonRpcController {
         return resp;
     }
 
-    private JsonRpcResponse<ResponseMessage> handleMessageStream(
-            JsonRpcRequest request,
-            JsonRpcResponse<?> base,
-            String agentSessionId) {
-        JsonRpcResponse<ResponseMessage> resp = new JsonRpcResponse<>();
-        resp.id = base.id;
-
-        MessageStreamParams params = mapMessageStreamParams(request.params);
-        if (params == null || params.message == null || params.message.parts == null || params.message.parts.isEmpty()) {
-            resp.error = new JsonRpcError(-32602, "Invalid params: message with parts required");
-            return resp;
-        }
-
-        String textQuery = params.message.parts.stream()
-                .filter(part -> part != null && "text".equals(part.kind))
-                .map(part -> part.text)
-                .filter(text -> text != null && !text.isBlank())
-                .findFirst()
-                .orElse(null);
-
-        String weatherResult = weatherAgent.search(textQuery);
-        String summary = buildMessageStreamSummary(params, agentSessionId);
-
-        ResponseMessage message = new ResponseMessage();
-        message.parts = java.util.List.of(new PartDto(summary), new PartDto(weatherResult));
-        resp.result = message;
-        return resp;
-    }
-
-    private String buildMessageStreamSummary(MessageStreamParams params, String agentSessionId) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("messageStream requestId=")
-                .append(stringOrPlaceholder(params.id))
-                .append(" sessionId=")
-                .append(stringOrPlaceholder(params.sessionId))
-                .append(" agentLoginSessionId=")
-                .append(stringOrPlaceholder(params.agentLoginSessionId))
-                .append(" agentSessionId=")
-                .append(stringOrPlaceholder(agentSessionId));
-
-        if (params.message != null) {
-            sb.append(" role=").append(stringOrPlaceholder(params.message.role));
-            java.util.List<String> partDescriptions = new java.util.ArrayList<>();
-            if (params.message.parts != null) {
-                for (MessagePart part : params.message.parts) {
-                    if (part == null) continue;
-                    String kind = stringOrPlaceholder(part.kind);
-                    if ("text".equals(kind)) {
-                        partDescriptions.add("text:\"" + stringOrPlaceholder(part.text) + "\"");
-                    } else if ("file".equals(kind)) {
-                        String name = part.file != null ? stringOrPlaceholder(part.file.name) : "unknown";
-                        String mime = part.file != null ? stringOrPlaceholder(part.file.mimeType) : "unknown";
-                        String location = "";
-                        if (part.file != null) {
-                            String uri = stringOrPlaceholder(part.file.uri);
-                            String bytes = stringOrPlaceholder(part.file.bytes);
-                            if (!"<none>".equals(uri)) {
-                                location = " uri=" + uri;
-                            } else if (!"<none>".equals(bytes)) {
-                                location = " bytes(length=" + bytes.length() + ")";
-                            }
-                        }
-                        partDescriptions.add("file:\"" + name + "\" (" + mime + ")" + location);
-                    } else if ("data".equals(kind)) {
-                        partDescriptions.add("data:" + (part.data == null ? "{}" : part.data.toString()));
-                    } else {
-                        partDescriptions.add(kind);
-                    }
-                }
-            }
-            sb.append(" parts=[");
-            sb.append(String.join(", ", partDescriptions));
-            sb.append("]");
-        }
-        return sb.toString();
-    }
-
-    private String stringOrPlaceholder(String value) {
-        return value == null || value.isBlank() ? "<none>" : value;
-    }
-
     private ResponseEntity<JsonRpcResponse<?>> handleTaskCancel(JsonRpcRequest request, JsonRpcResponse<?> base) {
         JsonRpcResponse<TaskStatusResult> resp = new JsonRpcResponse<>();
         resp.id = base.id;
@@ -303,73 +219,5 @@ public class JsonRpcController {
             return p;
         }
         return null;
-    }
-
-    private MessageStreamParams mapMessageStreamParams(Object params) {
-        if (params == null) return null;
-        if (params instanceof MessageStreamParams p) return p;
-        if (params instanceof java.util.Map<?,?> map) {
-            MessageStreamParams p = new MessageStreamParams();
-            p.id = valueAsString(map.get("id"));
-            p.sessionId = valueAsString(map.get("sessionId"));
-            p.agentLoginSessionId = valueAsString(map.get("agentLoginSessionId"));
-            p.message = mapAgentMessage(map.get("message"));
-            return p;
-        }
-        return null;
-    }
-
-    private AgentMessage mapAgentMessage(Object value) {
-        if (value == null) return null;
-        if (value instanceof AgentMessage message) return message;
-        if (value instanceof java.util.Map<?,?> map) {
-            AgentMessage message = new AgentMessage();
-            message.role = valueAsString(map.get("role"));
-            Object partsObj = map.get("parts");
-            if (partsObj instanceof java.util.List<?> list) {
-                java.util.List<MessagePart> parts = new java.util.ArrayList<>();
-                for (Object item : list) {
-                    MessagePart part = mapMessagePart(item);
-                    if (part != null) {
-                        parts.add(part);
-                    }
-                }
-                message.parts = parts;
-            }
-            return message;
-        }
-        return null;
-    }
-
-    private MessagePart mapMessagePart(Object value) {
-        if (value == null) return null;
-        if (value instanceof MessagePart part) return part;
-        if (value instanceof java.util.Map<?,?> map) {
-            MessagePart part = new MessagePart();
-            part.kind = valueAsString(map.get("kind"));
-            part.text = valueAsString(map.get("text"));
-            part.file = mapFilePart(map.get("file"));
-            part.data = map.get("data");
-            return part;
-        }
-        return null;
-    }
-
-    private FilePart mapFilePart(Object value) {
-        if (value == null) return null;
-        if (value instanceof FilePart filePart) return filePart;
-        if (value instanceof java.util.Map<?,?> map) {
-            FilePart file = new FilePart();
-            file.name = valueAsString(map.get("name"));
-            file.mimeType = valueAsString(map.get("mimeType"));
-            file.bytes = valueAsString(map.get("bytes"));
-            file.uri = valueAsString(map.get("uri"));
-            return file;
-        }
-        return null;
-    }
-
-    private String valueAsString(Object value) {
-        return value == null ? null : String.valueOf(value);
     }
 }

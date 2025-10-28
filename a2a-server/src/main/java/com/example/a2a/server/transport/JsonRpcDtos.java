@@ -87,31 +87,4 @@ public class JsonRpcDtos {
     public static class TaskResult {
         public ResponseMessage message; // 仅在COMPLETED时返回
     }
-
-    // ---- 0.3.0 SDK message/stream 请求 DTO ----
-    public static class MessageStreamParams {
-        public String id;
-        public String sessionId;
-        public String agentLoginSessionId;
-        public AgentMessage message;
-    }
-
-    public static class AgentMessage {
-        public String role;
-        public java.util.List<MessagePart> parts;
-    }
-
-    public static class MessagePart {
-        public String kind;
-        public String text;
-        public FilePart file;
-        public Object data;
-    }
-
-    public static class FilePart {
-        public String name;
-        public String mimeType;
-        public String bytes;
-        public String uri;
-    }
 }
