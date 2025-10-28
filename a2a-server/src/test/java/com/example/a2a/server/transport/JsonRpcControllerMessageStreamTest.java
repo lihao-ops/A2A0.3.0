@@ -51,6 +51,6 @@ class JsonRpcControllerMessageStreamTest {
                 .andExpect(jsonPath("$.result.parts[0].text", containsString("agentSessionId=8f01f3d172cd4396a0e535ae8aec6687")))
                 .andExpect(jsonPath("$.result.parts[0].text", containsString("file:\"conditions.txt\" (text/plain) uri=https://cdn/files/1")))
                 .andExpect(jsonPath("$.result.parts[0].text", containsString("data:{units=metric}")))
-                .andExpect(jsonPath("$.result.parts[1].text").value("Weather in weather in LA, CA: Sunny 25°C"));
+                .andExpect(jsonPath("$.result.parts[1].text").value("Weather in LA, CA: Sunny 25°C"));
     }
 }
