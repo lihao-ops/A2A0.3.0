@@ -35,9 +35,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.Optional;
 
 /**
- * Handles the HarmonyOS agent JSON-RPC methods on the unified {@code /agent/message} endpoint.
- * The controller intentionally mirrors the behaviour defined by the A2A 0.3.0 SDK but relies on
- * lightweight DTOs so that the sample can be built in an offline environment.
+ * 统一处理 {@code /agent/message} 端点上的 HarmonyOS Agent JSON-RPC 方法，实现与 A2A 0.3.0 SDK
+ * 一致的行为，同时通过轻量 DTO 便于离线构建与测试。
  */
 @RestController
 @RequestMapping("/agent")
@@ -49,6 +48,9 @@ public class AgentMessageController {
     private final ConversationContextService conversationContextService;
     private final StreamingTaskService streamingTaskService;
 
+    /**
+     * 注入控制器依赖。
+     */
     public AgentMessageController(ObjectMapper objectMapper,
                                   AgentSessionService agentSessionService,
                                   AuthorizationService authorizationService,
@@ -61,6 +63,9 @@ public class AgentMessageController {
         this.streamingTaskService = streamingTaskService;
     }
 
+    /**
+     * 分发所有 Agent RPC 调用并根据方法名路由。
+     */
     @PostMapping("/message")
     public Object handle(@RequestBody AgentRpcRequest request,
                          @RequestHeader(value = "agent-session-id", required = false) String agentSessionId) {
@@ -90,6 +95,9 @@ public class AgentMessageController {
         }
     }
 
+    /**
+     * 处理 initialize 请求，创建新的会话。
+     */
     private AgentRpcResponse<InitializeResult> handleInitialize(AgentRpcRequest request) {
         SessionRecord record = agentSessionService.createSession();
         InitializeResult result = new InitializeResult();
@@ -98,11 +106,17 @@ public class AgentMessageController {
         return AgentRpcResponse.success(request.id, result);
     }
 
+    /**
+     * 处理 notifications/initialized 通知，标记会话完成初始化。
+     */
     private AgentRpcResponse<AckResult> handleInitialized(AgentRpcRequest request, String agentSessionId) {
         agentSessionService.markInitialized(agentSessionId);
         return AgentRpcResponse.success(request.id, new AckResult());
     }
 
+    /**
+     * 处理 message/stream 请求，返回 SSE 流。
+     */
     private SseEmitter handleMessageStream(AgentRpcRequest request, String agentSessionId)
             throws JsonProcessingException {
         agentSessionService.requireSession(agentSessionId);
@@ -120,6 +134,9 @@ public class AgentMessageController {
         return streamingTaskService.startStream(request.id, params, summary, textQuery);
     }
 
+    /**
+     * 处理 tasks/cancel 请求，尝试取消指定任务。
+     */
     private AgentRpcResponse<CancelResult> handleTaskCancel(AgentRpcRequest request, String agentSessionId)
             throws JsonProcessingException {
         agentSessionService.requireSession(agentSessionId);
@@ -134,6 +151,9 @@ public class AgentMessageController {
         return AgentRpcResponse.success(request.id, result);
     }
 
+    /**
+     * 处理 clearContext 请求，清除对话上下文。
+     */
     private AgentRpcResponse<ClearContextResult> handleClearContext(AgentRpcRequest request, String agentSessionId)
             throws JsonProcessingException {
         agentSessionService.requireSession(agentSessionId);
@@ -146,6 +166,9 @@ public class AgentMessageController {
         return AgentRpcResponse.success(request.id, result);
     }
 
+    /**
+     * 处理 authorize 请求，创建登录会话。
+     */
     private AgentRpcResponse<AuthorizeResult> handleAuthorize(AgentRpcRequest request, String agentSessionId)
             throws JsonProcessingException {
         agentSessionService.requireSession(agentSessionId);
@@ -161,6 +184,9 @@ public class AgentMessageController {
         return AgentRpcResponse.success(request.id, result);
     }
 
+    /**
+     * 处理 deauthorize 请求，撤销登录会话。
+     */
     private AgentRpcResponse<DeauthorizeResult> handleDeauthorize(AgentRpcRequest request, String agentSessionId)
             throws JsonProcessingException {
         agentSessionService.requireSession(agentSessionId);
@@ -177,6 +203,9 @@ public class AgentMessageController {
         return AgentRpcResponse.success(request.id, result);
     }
 
+    /**
+     * 构造流式任务摘要，记录关键标识。
+     */
     private String buildSummary(String requestId, MessageStreamParams params, String agentSessionId) {
         StringBuilder builder = new StringBuilder("message/stream requestId=")
                 .append(requestId == null ? "<unknown>" : requestId)
@@ -194,6 +223,9 @@ public class AgentMessageController {
         return builder.toString();
     }
 
+    /**
+     * 从消息部件中提取文本内容。
+     */
     private Optional<String> extractTextParam(AgentMessage message) {
         if (message == null || message.parts == null) {
             return Optional.empty();
@@ -205,6 +237,9 @@ public class AgentMessageController {
                 .findFirst();
     }
 
+    /**
+     * 从数据部件中提取指定字段。
+     */
     private Optional<String> extractDataField(AgentMessage message, String fieldName) {
         if (message == null || message.parts == null) {
             return Optional.empty();
@@ -216,6 +251,9 @@ public class AgentMessageController {
                 .findFirst();
     }
 
+    /**
+     * 将 JSON 参数节点转换为指定类型。
+     */
     private <T> T readParams(JsonNode node, Class<T> type) throws JsonProcessingException {
         if (node == null || node.isNull()) {
             return null;

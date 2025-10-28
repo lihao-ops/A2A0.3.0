@@ -10,18 +10,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Simple in-memory任务编排器，复用示例 {@link WeatherAgent} 来模拟任务的生命周期。该类
- * 主要用于 JSON-RPC 演示，与 HarmonyOS 的流式实现相互独立，便于按需裁剪或替换为真实
- * 的异步任务引擎。
+ * 基于内存的数据结构实现的轻量任务编排器，复用示例 {@link WeatherAgent} 来模拟任务生命周期。
+ * 主要用于 JSON-RPC 演示，和 HarmonyOS 流式实现相互独立，便于替换为真实的异步任务引擎。
  */
 @Service
 public class TaskService {
 
+    /**
+     * 任务状态数据结构，保存当前执行信息。
+     */
     public static class TaskData {
         public String taskId;
-        public volatile String state; // SUBMITTED, RUNNING, COMPLETED, FAILED, CANCELED
+        public volatile String state; // 可取值：SUBMITTED、RUNNING、COMPLETED、FAILED、CANCELED
         public String inputText;
-        public String resultText; // 简化为文本；返回时包装为JSON-RPC的Message/Part结构
+        public String resultText; // 简化为文本，返回时再包装为 JSON-RPC Message/Part 结构
         public volatile boolean cancelRequested;
     }
 
@@ -29,6 +31,11 @@ public class TaskService {
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final WeatherAgent weatherAgent;
 
+    /**
+     * 注入示例天气 Agent。
+     *
+     * @param weatherAgent 天气查询实现
+     */
     public TaskService(WeatherAgent weatherAgent) {
         this.weatherAgent = weatherAgent;
     }
@@ -48,6 +55,11 @@ public class TaskService {
         return data;
     }
 
+    /**
+     * 后台线程执行任务：模拟耗时、检查取消标记并生成结果。
+     *
+     * @param data 当前任务数据
+     */
     private void runTask(TaskData data) {
         if (data.cancelRequested) {
             data.state = "CANCELED";
@@ -72,6 +84,12 @@ public class TaskService {
         }
     }
 
+    /**
+     * 根据任务标识获取最新的任务状态。
+     *
+     * @param taskId 任务标识
+     * @return 任务数据，未找到返回 {@code null}
+     */
     public TaskData get(String taskId) {
         return tasks.get(taskId);
     }

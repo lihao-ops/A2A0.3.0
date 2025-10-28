@@ -8,11 +8,19 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * A2A 示例客户端入口，通过命令行任务模拟完整调用流程。
+ */
 @SpringBootApplication
 public class A2AClientApplication {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(A2AClientApplication.class);
-    
+
+    /**
+     * 启动命令行客户端。
+     *
+     * @param args 命令行参数
+     */
     public static void main(String[] args) {
         logger.info("启动 A2A 客户端应用程序");
         org.springframework.context.ConfigurableApplicationContext ctx =
@@ -23,6 +31,9 @@ public class A2AClientApplication {
         SpringApplication.exit(ctx);
     }
 
+    /**
+     * 注册命令行执行入口，依次调用各个测试流程。
+     */
     @Bean
     CommandLineRunner runner(ClientService clientService) {
         return args -> {
