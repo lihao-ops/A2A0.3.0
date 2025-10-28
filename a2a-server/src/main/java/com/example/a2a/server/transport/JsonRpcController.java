@@ -2,16 +2,13 @@ package com.example.a2a.server.transport;
 
 import com.example.a2a.server.agent.WeatherAgent;
 import com.example.a2a.server.core.TaskService;
-import com.example.a2a.server.transport.message.dto.MessageStreamDtos;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static com.example.a2a.server.transport.JsonRpcDtos.*;
 
@@ -26,7 +23,7 @@ public class JsonRpcController {
         this.taskService = taskService;
     }
 
-    @PostMapping({"/jsonrpc", "/agent/message"})
+    @PostMapping("/jsonrpc")
     public ResponseEntity<JsonRpcResponse<?>> handle(@RequestBody JsonRpcRequest request,
                                                      @RequestHeader(value = "agent-session-id", required = false)
                                                      String agentSessionId) {
@@ -42,9 +39,6 @@ public class JsonRpcController {
             if ("weather_search".equals(request.method)) {
                 JsonRpcResponse<ResponseMessage> r = handleWeatherSearch(request, base);
                 return ResponseEntity.ok((JsonRpcResponse<?>) r);
-            } else if ("message/stream".equals(request.method)) {
-                JsonRpcResponse<ResponseMessage> r = handleMessageStream(request, base, agentSessionId);
-                return ResponseEntity.ok((JsonRpcResponse<?>) r);
             } else if ("agent_card".equals(request.method)) {
                 JsonRpcResponse<AgentCardDto> r = handleAgentCard(base);
                 return ResponseEntity.ok((JsonRpcResponse<?>) r);
@@ -59,9 +53,6 @@ public class JsonRpcController {
                 return ResponseEntity.ok((JsonRpcResponse<?>) r);
             } else if ("task_cancel".equals(request.method)) {
                 return handleTaskCancel(request, base);
-            } else if ("message/stream".equals(request.method)) {
-                base.error = new JsonRpcError(-32601, "Method message/stream must be invoked via /agent/message");
-                return ResponseEntity.ok(base);
             } else {
                 base.error = new JsonRpcError(-32601, "Method not found: " + request.method);
                 return ResponseEntity.ok(base);
@@ -82,75 +73,6 @@ public class JsonRpcController {
 
         ResponseMessage message = new ResponseMessage();
         message.parts = java.util.List.of(new PartDto(result));
-        resp.result = message;
-        return resp;
-    }
-
-    private JsonRpcResponse<ResponseMessage> handleMessageStream(JsonRpcRequest request, JsonRpcResponse<?> base,
-                                                                 String agentSessionId) {
-        JsonRpcResponse<ResponseMessage> resp = new JsonRpcResponse<>();
-        resp.id = base.id;
-
-        MessageStreamDtos.MessageStreamParamsDto params = MessageStreamParams(request.params);
-        if (params == null || params.message == null) {
-            resp.error = new JsonRpcError(-32602, "Invalid params: message required");
-            return resp;
-        }
-
-        String query = null;
-        MessageStreamDtos.MessagePartDto filePart = null;
-        Object dataPayload = null;
-        if (params.message.parts != null) {
-            for (MessageStreamDtos.MessagePartDto part : params.message.parts) {
-                if (part == null) continue;
-                if (query == null && "text".equals(part.kind)) {
-                    query = part.text;
-                } else if (filePart == null && "file".equals(part.kind) && part.file != null) {
-                    filePart = part;
-                } else if (dataPayload == null && "data".equals(part.kind)) {
-                    dataPayload = part.data;
-                }
-            }
-        }
-
-        if (query == null) {
-            query = "";
-        }
-
-        String weatherResult = weatherAgent.search(query);
-        StringBuilder builder = new StringBuilder();
-        builder.append("message/stream handled for request ")
-                .append(params.id == null ? "<unknown>" : params.id)
-                .append('\n');
-        if (params.sessionId != null) {
-            builder.append("sessionId: ").append(params.sessionId).append('\n');
-        }
-        if (params.agentLoginSessionId != null) {
-            builder.append("agentLoginSessionId: ").append(params.agentLoginSessionId).append('\n');
-        }
-        if (agentSessionId != null) {
-            builder.append("agent-session-id(header): ").append(agentSessionId).append('\n');
-        }
-        builder.append("weather: ").append(weatherResult);
-        if (filePart != null && filePart.file != null) {
-            builder.append('\n').append("file name: ")
-                    .append(filePart.file.name == null ? "<unknown>" : filePart.file.name);
-            if (filePart.file.mimeType != null) {
-                builder.append(" (mimeType: ").append(filePart.file.mimeType).append(')');
-            }
-            if (filePart.file.uri != null) {
-                builder.append(" uri=").append(filePart.file.uri);
-            }
-            if (filePart.file.bytes != null) {
-                builder.append(" bytes(length)=").append(filePart.file.bytes.length());
-            }
-        }
-        if (dataPayload != null) {
-            builder.append('\n').append("data payload: ").append(String.valueOf(dataPayload));
-        }
-
-        ResponseMessage message = new ResponseMessage();
-        message.parts = List.of(new PartDto(builder.toString()));
         resp.result = message;
         return resp;
     }
