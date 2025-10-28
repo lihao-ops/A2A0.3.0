@@ -2,6 +2,7 @@ package com.example.a2a.server.transport;
 
 import com.example.a2a.server.agent.WeatherAgent;
 import com.example.a2a.server.core.TaskService;
+import com.example.a2a.server.transport.message.dto.MessageStreamDtos;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -90,17 +91,17 @@ public class JsonRpcController {
         JsonRpcResponse<ResponseMessage> resp = new JsonRpcResponse<>();
         resp.id = base.id;
 
-        MessageStreamParams params = mapMessageStreamParams(request.params);
+        MessageStreamDtos.MessageStreamParamsDto params = MessageStreamParams(request.params);
         if (params == null || params.message == null) {
             resp.error = new JsonRpcError(-32602, "Invalid params: message required");
             return resp;
         }
 
         String query = null;
-        MessagePartDto filePart = null;
+        MessageStreamDtos.MessagePartDto filePart = null;
         Object dataPayload = null;
         if (params.message.parts != null) {
-            for (MessagePartDto part : params.message.parts) {
+            for (MessageStreamDtos.MessagePartDto part : params.message.parts) {
                 if (part == null) continue;
                 if (query == null && "text".equals(part.kind)) {
                     query = part.text;
