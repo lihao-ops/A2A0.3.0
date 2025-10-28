@@ -10,26 +10,26 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.http.ResponseEntity;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AgentMessageControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private TestRestTemplate restTemplate;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -55,13 +55,10 @@ class AgentMessageControllerTest {
                 "\"id\":\"init\"," +
                 "\"method\":\"initialize\"" +
                 "}";
-        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(initializePayload))
-                .andExpect(status().isOk())
-                .andReturn();
+        ResponseEntity<String> response = postJson(initializePayload, null);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
 
-        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        JsonNode json = objectMapper.readTree(response.getBody());
         agentSessionId = json.path("result").path("agentSessionId").asText();
         assertThat(agentSessionId).isNotBlank();
     }
@@ -74,14 +71,10 @@ class AgentMessageControllerTest {
                 "\"method\":\"notifications/initialized\"" +
                 "}";
 
-        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
-                .andExpect(status().isOk())
-                .andReturn();
+        ResponseEntity<String> response = postJson(payload, agentSessionId);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
 
-        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        JsonNode json = objectMapper.readTree(response.getBody());
         assertThat(json.path("result").path("status").asText()).isEqualTo("ok");
         assertThat(agentSessionService.isInitialized(agentSessionId)).isTrue();
     }
@@ -101,18 +94,10 @@ class AgentMessageControllerTest {
                 "\"kind\":\"text\",\"text\":\"weather in London\"" +
                 "}]}}}";
 
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
-                .andExpect(request().asyncStarted())
-                .andReturn();
+        ResponseEntity<String> response = postStream(payload, agentSessionId);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
 
-        MvcResult result = mockMvc.perform(asyncDispatch(mvcResult))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        String body = result.getResponse().getContentAsString();
+        String body = response.getBody();
         assertThat(body).contains("artifact-update");
         assertThat(body).contains("\"final\":true");
         assertThat(body).contains("Weather in London");
@@ -138,12 +123,10 @@ class AgentMessageControllerTest {
                 "\"kind\":\"text\",\"text\":\"weather in Shanghai\"" +
                 "}]}}}";
 
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(streamPayload))
-                .andExpect(request().asyncStarted())
-                .andReturn();
+        CompletableFuture<ResponseEntity<String>> streamFuture = CompletableFuture.supplyAsync(() ->
+                postStream(streamPayload, agentSessionId));
+
+        waitUntil(() -> streamingTaskService.hasActiveTask(taskId), 5_000L);
 
         String cancelPayload = "{" +
                 "\"jsonrpc\":\"2.0\"," +
@@ -151,21 +134,16 @@ class AgentMessageControllerTest {
                 "\"method\":\"tasks/cancel\"," +
                 "\"params\":{\"id\":\"" + taskId + "\"}}";
 
-        MvcResult cancelResult = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(cancelPayload))
-                .andExpect(status().isOk())
-                .andReturn();
+        ResponseEntity<String> cancelResponse = postJson(cancelPayload, agentSessionId);
+        assertThat(cancelResponse.getStatusCode().is2xxSuccessful()).isTrue();
 
-        JsonNode cancelJson = objectMapper.readTree(cancelResult.getResponse().getContentAsString());
+        JsonNode cancelJson = objectMapper.readTree(cancelResponse.getBody());
         assertThat(cancelJson.path("result").path("status").path("state").asText()).isEqualTo("canceled");
 
-        MvcResult streamResult = mockMvc.perform(asyncDispatch(mvcResult))
-                .andExpect(status().isOk())
-                .andReturn();
+        ResponseEntity<String> streamResponse = streamFuture.get(5, TimeUnit.SECONDS);
+        assertThat(streamResponse.getStatusCode().is2xxSuccessful()).isTrue();
 
-        String body = streamResult.getResponse().getContentAsString();
+        String body = streamResponse.getBody();
         assertThat(body).contains("\"state\":\"canceled\"");
         assertThat(streamingTaskService.hasActiveTask(taskId)).isFalse();
     }
@@ -186,13 +164,8 @@ class AgentMessageControllerTest {
                 "\"kind\":\"text\",\"text\":\"weather in Beijing\"" +
                 "}]}}}";
 
-        MvcResult mvcResult = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(streamPayload))
-                .andExpect(request().asyncStarted())
-                .andReturn();
-        mockMvc.perform(asyncDispatch(mvcResult)).andExpect(status().isOk());
+        ResponseEntity<String> streamResponse = postStream(streamPayload, agentSessionId);
+        assertThat(streamResponse.getStatusCode().is2xxSuccessful()).isTrue();
 
         ConversationContext context = conversationContextService.getContext(agentSessionId, "conversation-3");
         assertThat(context).isNotNull();
@@ -203,14 +176,10 @@ class AgentMessageControllerTest {
                 "\"method\":\"clearContext\"," +
                 "\"params\":{\"sessionId\":\"conversation-3\"}}";
 
-        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(clearPayload))
-                .andExpect(status().isOk())
-                .andReturn();
+        ResponseEntity<String> response = postJson(clearPayload, agentSessionId);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
 
-        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        JsonNode json = objectMapper.readTree(response.getBody());
         assertThat(json.path("result").path("status").path("state").asText()).isEqualTo("cleared");
         assertThat(conversationContextService.getContext(agentSessionId, "conversation-3")).isNull();
     }
@@ -227,14 +196,10 @@ class AgentMessageControllerTest {
                 "\"parts\":[{" +
                 "\"kind\":\"data\",\"data\":{\"authCode\":\"CODE-123\"}}]}}}";
 
-        MvcResult authResult = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(authorizePayload))
-                .andExpect(status().isOk())
-                .andReturn();
+        ResponseEntity<String> authResponse = postJson(authorizePayload, agentSessionId);
+        assertThat(authResponse.getStatusCode().is2xxSuccessful()).isTrue();
 
-        JsonNode authJson = objectMapper.readTree(authResult.getResponse().getContentAsString());
+        JsonNode authJson = objectMapper.readTree(authResponse.getBody());
         String loginSessionId = authJson.path("result").path("agentLoginSessionId").asText();
         assertThat(loginSessionId).isNotBlank();
         assertThat(authorizationService.isActive(loginSessionId)).isTrue();
@@ -249,15 +214,43 @@ class AgentMessageControllerTest {
                 "\"parts\":[{" +
                 "\"kind\":\"data\",\"data\":{\"agentLoginSessionId\":\"" + loginSessionId + "\"}}]}}}";
 
-        MvcResult deauthResult = mockMvc.perform(MockMvcRequestBuilders.post("/agent/message")
-                        .header("agent-session-id", agentSessionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(deauthorizePayload))
-                .andExpect(status().isOk())
-                .andReturn();
+        ResponseEntity<String> deauthResponse = postJson(deauthorizePayload, agentSessionId);
+        assertThat(deauthResponse.getStatusCode().is2xxSuccessful()).isTrue();
 
-        JsonNode deauthJson = objectMapper.readTree(deauthResult.getResponse().getContentAsString());
+        JsonNode deauthJson = objectMapper.readTree(deauthResponse.getBody());
         assertThat(deauthJson.path("result").path("version").asText()).isEqualTo("1.0");
         assertThat(authorizationService.isActive(loginSessionId)).isFalse();
+    }
+
+    private ResponseEntity<String> postJson(String payload, String sessionId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (sessionId != null) {
+            headers.add("agent-session-id", sessionId);
+        }
+        HttpEntity<String> entity = new HttpEntity<>(payload, headers);
+        return restTemplate.postForEntity("/agent/message", entity, String.class);
+    }
+
+    private ResponseEntity<String> postStream(String payload, String sessionId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(java.util.List.of(MediaType.TEXT_EVENT_STREAM));
+        if (sessionId != null) {
+            headers.add("agent-session-id", sessionId);
+        }
+        HttpEntity<String> entity = new HttpEntity<>(payload, headers);
+        return restTemplate.exchange("/agent/message", HttpMethod.POST, entity, String.class);
+    }
+
+    private void waitUntil(BooleanSupplier condition, long timeoutMillis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Condition was not met within " + timeoutMillis + " ms");
     }
 }
