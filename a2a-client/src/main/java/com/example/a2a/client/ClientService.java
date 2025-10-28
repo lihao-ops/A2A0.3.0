@@ -10,6 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.core.ParameterizedTypeReference;
 
+/**
+ * 封装调用示例 JSON-RPC 接口的逻辑，模拟第三方系统在未接入 HarmonyOS 之前的调试方式。
+ * 日志中大量输出请求/响应细节，便于排查和比对华为终端侧的期望格式。
+ */
 @Service
 public class ClientService {
 
@@ -17,6 +21,9 @@ public class ClientService {
     private final RestClient restClient = RestClient.create();
     private static final String URL = "http://localhost:10001/jsonrpc";
 
+    /**
+     * 调用 `agent_card` 接口获取基础元信息，常用于 Postman 或本地脚本校验配置。
+     */
     public AgentCardDto getAgentCard() {
         logger.info("开始获取 AgentCard 信息，请求 URL: {}", URL);
         
@@ -65,6 +72,9 @@ public class ClientService {
         }
     }
 
+    /**
+     * 对应 JSON-RPC 的 `task_submit`，主要用于演示异步任务链路。
+     */
     public String submitTask(String text) {
         logger.info("开始提交任务，任务内容: {}", text);
         
@@ -114,6 +124,9 @@ public class ClientService {
         }
     }
 
+    /**
+     * 轮询任务状态。返回 null 表示请求失败或服务端返回错误。
+     */
     public String getTaskStatus(String taskId) {
         logger.info("开始查询任务状态，taskId: {}", taskId);
         
@@ -163,6 +176,9 @@ public class ClientService {
         }
     }
 
+    /**
+     * 查询任务最终结果。当服务端返回错误码时抛出异常，提醒外部流程及时处理。
+     */
     public String getTaskResult(String taskId) {
         logger.info("开始获取任务结果，taskId: {}", taskId);
         

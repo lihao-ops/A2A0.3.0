@@ -41,11 +41,23 @@
                 <groupId>io.github.a2asdk</groupId>
                 <artifactId>a2a-java-sdk-reference-jsonrpc</artifactId>
                 <version>${io.a2a.sdk.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.jboss.logging</groupId>
+                        <artifactId>jboss-logging</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>io.github.a2asdk</groupId>
                 <artifactId>a2a-java-sdk-reference-rest</artifactId>
                 <version>${io.a2a.sdk.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.jboss.logging</groupId>
+                        <artifactId>jboss-logging</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
         </dependencies>
     </dependencyManagement>
